@@ -4,6 +4,8 @@ import json
 from typing import Dict, Optional
 import logging
 
+from langchain_google_genai._common import GoogleGenerativeAIError
+
 from ..actions.utils import stream_output
 from ..actions.query_processing import plan_research_outline, get_search_results
 from ..document import DocumentLoader, OnlineDocumentLoader, LangChainDocumentLoader
@@ -269,7 +271,25 @@ class ResearchConductor:
                 scraped_data = await self._scrape_data_by_urls(sub_query)
                 self.logger.info(f"Scraped data size: {len(scraped_data)}")
 
-            content = await self.researcher.context_manager.get_similar_content_by_query(sub_query, scraped_data)
+            # [ADDED] Handle rate limit
+            for attempt in range(1, 8):
+                try:
+                    content = await self.researcher.context_manager.get_similar_content_by_query(
+                        sub_query, scraped_data
+                    )
+                    break
+                except GoogleGenerativeAIError as e:
+                    message = e.args[0]
+                    if "RATE_LIMIT_EXCEEDED" not in message or attempt >= 7:
+                        raise e
+
+                    self.logger.warning(
+                        f"Rate limit exceeded, retrying in {attempt * 10} seconds..."
+                    )
+                    await asyncio.sleep(attempt * 10)
+            else:
+                raise Exception("Exceeded maximum retry attempts without success")
+
             self.logger.info(f"Content found for sub-query: {len(str(content)) if content else 0} chars")
 
             if content and self.researcher.verbose:

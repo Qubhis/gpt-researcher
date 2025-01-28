@@ -1,16 +1,18 @@
-from fastapi import WebSocket
 import uuid
+from time import sleep
 
-from gpt_researcher.utils.llm import get_llm
-from gpt_researcher.memory import Memory
-from gpt_researcher.config.config import Config
-
-from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.memory import MemorySaver
-
-from langchain_community.vectorstores import InMemoryVectorStore
+from fastapi import WebSocket
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.tools import Tool, tool
+from langchain_community.vectorstores import InMemoryVectorStore
+from langchain_google_genai._common import GoogleGenerativeAIError
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import create_react_agent
+
+from gpt_researcher.config.config import Config
+from gpt_researcher.memory import Memory
+from gpt_researcher.utils.llm import get_llm
+
 
 class ChatAgentWithMemory:
     def __init__(
@@ -49,7 +51,20 @@ class ChatAgentWithMemory:
                 **cfg.embedding_kwargs
             ).get_embeddings()
             self.vector_store = InMemoryVectorStore(self.embedding)
-            self.vector_store.add_texts(documents)
+            
+            # [ADDED] Handle rate limit
+            for attempt in range(1, 8):
+                try:
+                    self.vector_store.add_texts(documents)
+                    break
+                except GoogleGenerativeAIError as e:
+                    message = e.args[0]
+                    if "RATE_LIMIT_EXCEEDED" not in message or attempt >= 7:
+                        raise e
+
+                    sleep(attempt * 10)
+            else:
+                raise Exception("Exceeded maximum retry attempts without success")
 
         # Create the React Agent Graph with the configured provider
         graph = create_react_agent(

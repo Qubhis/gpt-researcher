@@ -10,6 +10,7 @@ from langchain.retrievers.document_compressors import (
     EmbeddingsFilter,
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_google_genai._common import GoogleGenerativeAIError
 from ..vector_store import VectorStoreWrapper
 from ..utils.costs import estimate_embedding_cost
 from ..memory.embeddings import OPENAI_EMBEDDING_MODEL
@@ -101,5 +102,18 @@ class WrittenContentCompressor:
         compressed_docs = self.__get_contextual_retriever()
         if cost_callback:
             cost_callback(estimate_embedding_cost(model=OPENAI_EMBEDDING_MODEL, docs=self.documents))
-        relevant_docs = await asyncio.to_thread(compressed_docs.invoke, query)
+        # [ADDED] Handle rate limit
+        for attempt in range(1, 8):
+            try:
+                relevant_docs = await asyncio.to_thread(compressed_docs.invoke, query)
+                break
+            except GoogleGenerativeAIError as e:
+                message = e.args[0]
+                if "RATE_LIMIT_EXCEEDED" not in message or attempt >= 7:
+                    raise e
+
+                await asyncio.sleep(attempt * 10)
+        else:
+            raise Exception("Exceeded maximum retry attempts without success")
+        
         return self.__pretty_docs_list(relevant_docs, max_results)
