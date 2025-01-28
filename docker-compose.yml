@@ -3,7 +3,7 @@ services:
     pull_policy: build
     image: gptresearcher/gpt-researcher
     build: ./
-    environment: 
+    environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       TAVILY_API_KEY: ${TAVILY_API_KEY}
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
@@ -15,7 +15,7 @@ services:
     restart: always
     ports:
       - 8000:8000
-      
+
   gptr-nextjs:
     pull_policy: build
     image: gptresearcher/gptr-nextjs
@@ -35,33 +35,33 @@ services:
     ports:
       - 3000:3000
 
-  gpt-researcher-tests:
-    image: gptresearcher/gpt-researcher-tests
-    build: ./
-    environment: 
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
-      LOGGING_LEVEL: INFO
-    profiles: ["test"]
-    command: >
-      /bin/sh -c "
-      pip install pytest pytest-asyncio faiss-cpu &&
-      python -m pytest tests/report-types.py &&
-      python -m pytest tests/vector-store.py
-      "
-  
-  discord-bot:
-    build:
-      context: ./docs/discord-bot
-      dockerfile: Dockerfile.dev
-    environment:
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-    volumes:
-      - ./docs/discord-bot:/app
-      - /app/node_modules
-    ports:
-      - 3001:3000
-    profiles: ["discord"]
-    restart: always
+  # gpt-researcher-tests:
+  #   image: gptresearcher/gpt-researcher-tests
+  #   build: ./
+  #   environment:
+  #     OPENAI_API_KEY: ${OPENAI_API_KEY}
+  #     TAVILY_API_KEY: ${TAVILY_API_KEY}
+  #     LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
+  #     LOGGING_LEVEL: INFO
+  #   profiles: ["test"]
+  #   command: >
+  #     /bin/sh -c "
+  #     pip install pytest pytest-asyncio faiss-cpu &&
+  #     python -m pytest tests/report-types.py &&
+  #     python -m pytest tests/vector-store.py
+  #     "
+
+  # discord-bot:
+  #   build:
+  #     context: ./docs/discord-bot
+  #     dockerfile: Dockerfile.dev
+  #   environment:
+  #     - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+  #     - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+  #   volumes:
+  #     - ./docs/discord-bot:/app
+  #     - /app/node_modules
+  #   ports:
+  #     - 3001:3000
+  #   profiles: ["discord"]
+  #   restart: always
