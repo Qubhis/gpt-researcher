@@ -1,3 +1,4 @@
+import asyncio
 import json_repair
 from ..utils.llm import create_chat_completion
 from ..prompts import generate_search_queries_prompt
@@ -52,43 +53,42 @@ async def generate_sub_queries(
         context=context
     )
 
-    try:
-        response = await create_chat_completion(
-            model=cfg.strategic_llm_model,
-            messages=[{"role": "user", "content": gen_queries_prompt}],
-            temperature=1,
-            llm_provider=cfg.strategic_llm_provider,
-            max_tokens=None,
-            llm_kwargs=cfg.llm_kwargs,
-            cost_callback=cost_callback,
-        )
-    except Exception as e:
-        logger.warning(f"Error with strategic LLM: {e}. Retrying with max_tokens={cfg.strategic_token_limit}.")
-        logger.warning(f"See https://github.com/assafelovic/gpt-researcher/issues/1022")
+    model = cfg.strategic_llm_model
+    temperature = 1
+    llm_provider=cfg.strategic_llm_provider
+    max_tokens = None
+    retries = 0
+    while retries <= 5:
         try:
             response = await create_chat_completion(
-                model=cfg.strategic_llm_model,
+                model=model,
                 messages=[{"role": "user", "content": gen_queries_prompt}],
-                temperature=1,
-                llm_provider=cfg.strategic_llm_provider,
-                max_tokens=cfg.strategic_token_limit,
+                temperature=temperature,
+                llm_provider=llm_provider,
+                max_tokens=max_tokens,
                 llm_kwargs=cfg.llm_kwargs,
                 cost_callback=cost_callback,
             )
-            logger.warning(f"Retrying with max_tokens={cfg.strategic_token_limit} successful.")
+            break
         except Exception as e:
-            logger.warning(f"Retrying with max_tokens={cfg.strategic_token_limit} failed.")
-            logger.warning(f"Error with strategic LLM: {e}. Falling back to smart LLM.")
-            response = await create_chat_completion(
-                model=cfg.smart_llm_model,
-                messages=[{"role": "user", "content": gen_queries_prompt}],
-                temperature=cfg.temperature,
-                max_tokens=cfg.smart_token_limit,
-                llm_provider=cfg.smart_llm_provider,
-                llm_kwargs=cfg.llm_kwargs,
-                cost_callback=cost_callback,
-            )
-
+            if "429 Resource has been exhausted" in str(e) and retries < 5:
+                await asyncio.sleep(60) # there are only 2 usages per minute for pro model
+            if retries == 0:
+                max_tokens = cfg.strategic_token_limit
+                logger.warning(f"Error with strategic LLM: {e}. Retrying with max_tokens={max_tokens}.")
+                logger.warning(f"See https://github.com/assafelovic/gpt-researcher/issues/1022")
+            elif retries == 1:
+                model = cfg.smart_llm_model
+                temperature = cfg.temperature
+                max_tokens = cfg.smart_token_limit
+                llm_provider = cfg.smart_llm_provider
+                logger.warning(f"Retrying with max_tokens={max_tokens} failed.")
+                logger.warning(f"Error with strategic LLM: {e}. Falling back to smart LLM.")
+            else:
+                raise
+            
+            retries += 1
+    
     return json_repair.loads(response)
 
 async def plan_research_outline(
